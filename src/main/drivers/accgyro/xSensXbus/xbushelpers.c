@@ -1,0 +1,127 @@
+#include "xbushelpers.h"
+
+#define OFFSET_TO_PREAMBLE		0
+#define OFFSET_TO_BID			1
+#define OFFSET_TO_MID			2
+#define OFFSET_TO_LEN			3
+#define OFFSET_TO_LEN_EXT_HI	4
+#define OFFSET_TO_LEN_EXT_LO	5
+#define OFFSET_TO_PAYLOAD		4
+#define OFFSET_TO_PAYLOAD_EXT	6
+#define LENGTH_EXTENDER_BYTE	0xFF
+#define XBUS_PREAMBLE			0xFA
+#define XBUS_CHECKSUM_SIZE		1
+
+/*!	\brief Returns true if the preamble equeals 0xFA, false othersise
+ */
+bool checkPreamble(const uint8_t *xbusMessage){
+	return xbusMessage[OFFSET_TO_PREAMBLE] == XBUS_PREAMBLE;
+}
+
+/*! \brief Returns xbus Bus identifier
+ */
+int getBusId(const uint8_t *xbusMessage){
+	return (xbusMessage[OFFSET_TO_BID] & 0xff);
+}
+
+/*! \brief Sets xbus Bus identifier
+ */
+void setBusId(uint8_t *xbusMessage, uint8_t busId){
+	xbusMessage[OFFSET_TO_BID] = busId & 0xff;
+}
+
+/*! \brief Returns xbus Message identifier
+ */
+int getMessageId(const uint8_t *xbusMessage){
+	return (xbusMessage[OFFSET_TO_MID] & 0xff);
+}
+
+/*! \brief Sets xbus Message identifier
+ */
+void setMessageId(uint8_t *xbusMessage, uint8_t messageId){
+	xbusMessage[OFFSET_TO_MID] = messageId & 0xff;
+}
+
+/*! \brief Returns xbus message (payload) length
+ */
+int getPayloadLength(const uint8_t *xbusMessage){
+	int length = xbusMessage[OFFSET_TO_LEN] & 0xff;
+	if (length != LENGTH_EXTENDER_BYTE){
+		return length;
+	}else{
+		int result = (xbusMessage[OFFSET_TO_LEN + 2] & 0xff);
+		result += (xbusMessage[OFFSET_TO_LEN + 1] & 0xff) << 8;
+		return result;
+	}
+}
+
+/*! \brief Sets xbus message (payload) length
+ */
+void setPayloadLength(uint8_t *xbusMessage, uint16_t payloadLength){
+	if (payloadLength < 255){
+		xbusMessage[OFFSET_TO_LEN] = payloadLength & 0xff;
+	}else{
+		xbusMessage[OFFSET_TO_LEN] = LENGTH_EXTENDER_BYTE;
+		xbusMessage[OFFSET_TO_LEN + 1] = (payloadLength >> 8) & 0xff;
+		xbusMessage[OFFSET_TO_LEN + 2] = payloadLength & 0xff;
+	}
+}
+
+/*! \brief Initialize a xbus message with BID, MID and Length
+ */
+void message(uint8_t *xbusMessage, uint8_t bid, uint8_t mid, uint16_t len){
+	xbusMessage[0] = 0xFA;
+	setBusId(xbusMessage, bid);
+	setMessageId(xbusMessage, mid);
+	setPayloadLength(xbusMessage, len);
+}
+
+/*! \brief Returns total length of xbus message (header + payload + checksum)
+ */
+int getRawLength(const uint8_t *xbusMessage){
+	int rtrn = getPayloadLength(xbusMessage);
+
+	if ((xbusMessage[OFFSET_TO_LEN] & 0xff) == LENGTH_EXTENDER_BYTE)
+		rtrn += 7;
+	else
+		rtrn += 5;
+	return rtrn;
+}
+
+/*! \brief Returns pointer to payload of an xbus message
+ */
+uint8_t* getPointerToPayload(uint8_t *xbusMessage){
+	if ((xbusMessage[OFFSET_TO_LEN] & 0xff) == LENGTH_EXTENDER_BYTE)
+		return xbusMessage + OFFSET_TO_PAYLOAD_EXT;
+	else
+		return xbusMessage + OFFSET_TO_PAYLOAD;
+}
+
+/*! \brief Updates a checksum over a piece of xbus message
+ */
+void updateChecksum(uint8_t const *data, uint16_t length, uint8_t *checksum){
+	for(int i = 0; i < length; i++)
+		*checksum -= data[i];
+}
+
+/*! \brief Inserts the correct checksum in xbus message
+ */
+void insertChecksum(uint8_t *xbusMessage){
+	int nBytes = getRawLength(xbusMessage);
+	uint8_t checksum = 0;
+	updateChecksum(&xbusMessage[1], nBytes - 2, &checksum);
+	xbusMessage[nBytes - 1] = (checksum & 0xff);
+}
+
+/*! \brief Verifies the checksum of aon xbus message
+ */
+bool verifyChecksum(const uint8_t *xbusMessage){
+	int nBytes = getRawLength(xbusMessage);
+	uint8_t checksum = 0;
+	for(int n = 1; n < nBytes; n++){
+		checksum += (xbusMessage[n] & 0xff);
+	}
+	checksum &= 0xff;
+	return (checksum == 0);
+}
+

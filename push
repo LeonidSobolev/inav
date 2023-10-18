@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+echo version.py "$*"
+python version.py
+echo "INC Version is OK"
+
+git add src/main/ver.h
+git add src/main/fc/*.h
+git add src/main/fc/*.c
+git add src/main/fc/*.yaml
+git add src/main/*/*.h
+git add src/main/*/*.c
+git add ver.json
+
+    
+MAKE TARGET=MATEKF405
+MAKE TARGET=MATEKF405SE
+    
+python version.py "$*"   
+
+git push 
